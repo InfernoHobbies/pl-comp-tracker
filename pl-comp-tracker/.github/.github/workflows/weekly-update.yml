@@ -1,0 +1,52 @@
+name: Weekly competition update
+
+on:
+  schedule:
+    # 21:00 UTC Monday = 07:00 Tuesday AEST (Queensland doesn't observe daylight saving)
+    - cron: "0 21 * * 1"
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab too
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      FPL_CLASSIC_LEAGUE_ID: ${{ secrets.FPL_CLASSIC_LEAGUE_ID }}
+      FPL_H2H_LEAGUE_ID: ${{ secrets.FPL_H2H_LEAGUE_ID }}
+      FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      FOOTYTIPS_EMAIL: ${{ secrets.FOOTYTIPS_EMAIL }}
+      FOOTYTIPS_PASSWORD: ${{ secrets.FOOTYTIPS_PASSWORD }}
+      FOOTYTIPS_LADDER_URL: ${{ secrets.FOOTYTIPS_LADDER_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Update live PL table
+        run: npm run fetch:pl-table
+
+      - name: Fetch FPL classic standings
+        run: npm run fetch:fpl-classic
+
+      - name: Fetch FPL H2H standings
+        run: npm run fetch:fpl-h2h
+
+      - name: Scrape footytips ladder
+        run: npm run scrape:footytips
+
+      - name: Upload debug screenshot if footytips step failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: footytips-debug
+          path: footytips-debug.png
+          if-no-files-found: ignore
