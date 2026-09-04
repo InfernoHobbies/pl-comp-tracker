@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Table — PL Competition Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --pitch: #0E2B1E;
+    --surface: #123626;
+    --surface-2: #17422F;
+    --line: #2E5A41;
+    --chalk: #F2F4EF;
+    --muted: #8FAE9B;
+    --gold: #D8B04A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--pitch);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 2px, transparent 2px, transparent 80px);
+    color: var(--chalk);
+    font-family: 'Inter', sans-serif;
+    padding: 0 0 64px;
+  }
+  header {
+    padding: 32px 20px 20px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: clamp(28px, 6vw, 40px);
+    letter-spacing: 0.5px;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+
+  .scoreboard {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 28px 0 40px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .score-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    background: var(--surface);
+    padding: 14px 16px;
+    opacity: 0;
+    animation: rise 0.4s ease forwards;
+  }
+  .score-row:nth-child(1) { animation-delay: 0.02s; }
+  .score-row:nth-child(2) { animation-delay: 0.08s; }
+  .score-row:nth-child(3) { animation-delay: 0.14s; }
+  .score-row:nth-child(4) { animation-delay: 0.20s; }
+  .score-row:nth-child(5) { animation-delay: 0.26s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .score-row.leader { background: linear-gradient(90deg, var(--surface-2), var(--surface)); }
+  .rank {
+    font-family: 'Oswald', sans-serif;
+    font-size: 20px;
+    color: var(--muted);
+  }
+  .leader .rank { color: var(--gold); }
+  .name { font-weight: 600; font-size: 16px; }
+  .points {
+    font-family: 'Oswald', sans-serif;
+    font-size: 22px;
+    text-align: right;
+  }
+  .points span { font-size: 12px; color: var(--muted); font-family: 'Inter', sans-serif; font-weight: 400; margin-left: 4px; }
+
+  .comp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) {
+    .comp-grid { grid-template-columns: 1fr; }
+  }
+  .comp-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 16px 8px;
+  }
+  .comp-card h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0 0 10px;
+    color: var(--chalk);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 6px 0; border-top: 1px solid var(--line); }
+  td.name { font-weight: 500; }
+  td.val { text-align: right; font-family: 'Oswald', sans-serif; color: var(--gold); }
+  tr:first-child td { border-top: none; }
+  .updated { color: var(--muted); font-size: 11px; margin-top: 10px; }
+
+  .empty { color: var(--muted); text-align: center; padding: 60px 20px; }
+  .empty a { color: var(--gold); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The Table</h1>
+  <p class="sub">Weekly tips, FPL classic, FPL head-to-head, and the season predictor — one leaderboard.</p>
+</header>
+<main id="app">
+  <div class="empty">Loading…</div>
+</main>
+
+<script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+  // ---- Fill these in once you have your Supabase project ----
+  const SUPABASE_URL = "YOUR_SUPABASE_URL";
+  const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+  // -------------------------------------------------------------
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const app = document.getElementById("app");
+
+  function rankPoints(list, key, direction) {
+    // direction: "desc" = highest value wins, "asc" = lowest value wins
+    const sorted = [...list].sort((a, b) => direction === "desc" ? b[key] - a[key] : a[key] - b[key]);
+    const n = sorted.length;
+    const withRank = sorted.map((row, i) => ({ ...row, compRank: i + 1, compPoints: n - i }));
+    const map = {};
+    withRank.forEach((r) => { map[r.person_id] = r; });
+    return map;
+  }
+
+  async function load() {
+    const [{ data: people }, { data: footytips }, { data: fplClassic }, { data: fplH2h }, { data: seasonPred }] = await Promise.all([
+      supabase.from("people").select("id, name"),
+      supabase.from("footytips_latest").select("*"),
+      supabase.from("fpl_classic_latest").select("*"),
+      supabase.from("fpl_h2h_latest").select("*"),
+      supabase.from("season_predictor_scores").select("*"),
+    ]);
+
+    if (!people || people.length === 0) {
+      app.innerHTML = `<div class="empty">No people added yet. Add rows to the <code>people</code> table in Supabase to get started.</div>`;
+      return;
+    }
+
+    const ftRank = rankPoints((footytips || []).map(r => ({ ...r, person_id: r.person_id })), "points", "desc");
+    const fcRank = rankPoints((fplClassic || []), "total_points", "desc");
+    const fhRank = rankPoints((fplH2h || []), "league_points", "desc");
+    const spRank = rankPoints((seasonPred || []), "total_points", "asc");
+
+    const overall = people.map((p) => {
+      const ft = ftRank[p.id];
+      const fc = fcRank[p.id];
+      const fh = fhRank[p.id];
+      const sp = spRank[p.id];
+      const total = (ft?.compPoints || 0) + (fc?.compPoints || 0) + (fh?.compPoints || 0) + (sp?.compPoints || 0);
+      return { ...p, total, ft, fc, fh, sp };
+    }).sort((a, b) => b.total - a.total);
+
+    const scoreboardHtml = overall.map((p, i) => `
+      <div class="score-row ${i === 0 ? 'leader' : ''}">
+        <div class="rank">${i + 1}</div>
+        <div class="name">${p.name}</div>
+        <div class="points">${p.total}<span>pts</span></div>
+      </div>
+    `).join("");
+
+    function compTable(title, rankMap, valueLabel, valueKey) {
+      const rows = people
+        .map((p) => ({ name: p.name, entry: rankMap[p.id] }))
+        .filter((r) => r.entry)
+        .sort((a, b) => a.entry.compRank - b.entry.compRank);
+      if (rows.length === 0) {
+        return `<div class="comp-card"><h2>${title}</h2><p class="updated">No data yet.</p></div>`;
+      }
+      const latestUpdate = rows.map(r => r.entry.updated_at).sort().reverse()[0];
+      return `
+        <div class="comp-card">
+          <h2>${title}</h2>
+          <table>
+            ${rows.map(r => `<tr><td class="name">${r.entry.compRank}. ${r.name}</td><td class="val">${r.entry[valueKey]}</td></tr>`).join("")}
+          </table>
+          <p class="updated">Updated ${new Date(latestUpdate).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</p>
+        </div>
+      `;
+    }
+
+    app.innerHTML = `
+      <div class="scoreboard">${scoreboardHtml}</div>
+      <div class="comp-grid">
+        ${compTable("Weekly Tipping", ftRank, "pts", "points")}
+        ${compTable("FPL Classic", fcRank, "pts", "total_points")}
+        ${compTable("FPL Head-to-Head", fhRank, "pts", "league_points")}
+        ${compTable("Season Predictor", spRank, "pts", "total_points")}
+      </div>
+    `;
+  }
+
+  load().catch((err) => {
+    console.error(err);
+    app.innerHTML = `<div class="empty">Couldn't load data — check the Supabase URL/key are filled in at the top of this file.<br><br>${err.message}</div>`;
+  });
+</script>
+</body>
+</html>

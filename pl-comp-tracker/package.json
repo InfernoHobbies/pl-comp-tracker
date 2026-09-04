@@ -1,0 +1,16 @@
+{
+  "name": "pl-comp-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch:fpl-classic": "node scripts/fetch-fpl-classic.js",
+    "fetch:fpl-h2h": "node scripts/fetch-fpl-h2h.js",
+    "fetch:pl-table": "node scripts/update-pl-table.js",
+    "scrape:footytips": "node scripts/scrape-footytips.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "playwright": "^1.47.0"
+  }
+}
