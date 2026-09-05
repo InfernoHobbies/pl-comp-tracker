@@ -39,7 +39,8 @@ async function main() {
   const page = await context.newPage();
 
   try {
-    await page.goto(LADDER_URL, { waitUntil: "networkidle" });
+    await page.goto(LADDER_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.waitForTimeout(2000);
 
     const notAMember = await page.locator("text=You are not a member of this competition").isVisible({ timeout: 3000 }).catch(() => false);
     if (notAMember) {

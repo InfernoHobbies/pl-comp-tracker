@@ -37,7 +37,10 @@ async function main() {
   await waitForEnter("Once you can see the ladder, come back here and press Enter... ");
 
   // Double check we actually ended up logged in and able to see the ladder.
-  await page.goto(LADDER_URL, { waitUntil: "networkidle" });
+  // Use domcontentloaded rather than networkidle here — ad-heavy pages like
+  // this one often never go fully network-idle, which would otherwise time out.
+  await page.goto(LADDER_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(2000);
   const stillBlocked = await page.locator("text=You are not a member of this competition").isVisible({ timeout: 3000 }).catch(() => false);
   if (stillBlocked) {
     console.log("\n⚠️  Still seeing 'You are not a member of this competition' on the ladder page.");
