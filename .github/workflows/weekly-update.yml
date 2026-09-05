@@ -42,10 +42,12 @@ jobs:
       - name: Scrape footytips ladder
         run: npm run scrape:footytips
 
-      - name: Upload debug screenshot if footytips step failed
+      - name: Upload debug files if footytips step failed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: footytips-debug
-          path: footytips-debug.png
+          path: |
+            footytips-debug.png
+            footytips-table-debug.html
           if-no-files-found: ignore

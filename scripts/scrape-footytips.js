@@ -9,6 +9,7 @@
 // the secret with the new contents.
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
+import fs from "fs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -107,7 +108,13 @@ async function main() {
     console.log(`Parsed ${parsed.length} ladder rows.`);
     if (parsed.length === 0) {
       await page.screenshot({ path: "footytips-debug.png", fullPage: true });
-      throw new Error("Parsed 0 ladder rows — see footytips-debug.png artifact, selectors need adjusting.");
+      const tableHtml = await page.evaluate(() => {
+        const tables = Array.from(document.querySelectorAll("table"));
+        const target = tables.find((t) => t.innerText.includes("TIPPER"));
+        return target ? target.outerHTML : "(no table containing 'TIPPER' found)";
+      });
+      fs.writeFileSync("footytips-table-debug.html", tableHtml);
+      throw new Error("Parsed 0 ladder rows — see footytips-debug.png and footytips-table-debug.html artifacts, selectors need adjusting.");
     }
 
     const { data: people, error: peopleErr } = await supabase
