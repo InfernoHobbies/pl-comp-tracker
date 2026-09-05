@@ -40,7 +40,6 @@ async function main() {
 
   try {
     await page.goto(LADDER_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(2000);
 
     const notAMember = await page.locator("text=You are not a member of this competition").isVisible({ timeout: 3000 }).catch(() => false);
     if (notAMember) {
@@ -48,7 +47,29 @@ async function main() {
       throw new Error("Session appears to be logged out or expired — re-run scripts/capture-footytips-session.js locally and update the FOOTYTIPS_STORAGE_STATE secret with the new file contents.");
     }
 
-    await page.waitForSelector("table", { timeout: 15000 });
+    // The tipping data loads asynchronously after the page appears, and can
+    // show a "Results not yet available" placeholder for a while first. Poll
+    // for the real table rather than a fixed wait, clicking any visible
+    // "refresh" link along the way.
+    const hasRealLadderData = async () =>
+      page.evaluate(() => {
+        const tables = Array.from(document.querySelectorAll("table"));
+        const target = tables.find((t) => t.innerText.includes("TIPPER"));
+        return target ? target.querySelectorAll("tr").length > 1 : false;
+      });
+
+    let loaded = await hasRealLadderData();
+    const deadline = Date.now() + 30000;
+    while (!loaded && Date.now() < deadline) {
+      await page.locator("text=Click here").click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(3000);
+      loaded = await hasRealLadderData();
+    }
+
+    if (!loaded) {
+      await page.screenshot({ path: "footytips-debug.png", fullPage: true });
+      throw new Error("Ladder data never finished loading after 30s (still showing 'Results not yet available') — see footytips-debug.png.");
+    }
 
     // The page has more than one <table> (there's also an unrelated generic
     // EPL standings widget) — find the one that's actually the tipping
