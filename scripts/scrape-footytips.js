@@ -29,7 +29,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // --- Adjust these if the real page doesn't match on first run ---
 const SELECTORS = {
-  loginTrigger: "text=Log In",
+  loginTrigger: "text=Log In, text=Login, a:has-text('Log In'), button:has-text('Log In')",
   emailInput: "input[type='email'], input[name='email']",
   continueButton: "button:has-text('Continue')",
   passwordInput: "input[type='password'], input[name='password']",
@@ -39,7 +39,8 @@ const SELECTORS = {
 
 async function main() {
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  let page = await context.newPage();
 
   try {
     await page.goto(LADDER_URL, { waitUntil: "networkidle" });
@@ -47,14 +48,28 @@ async function main() {
     // Dismiss a cookie banner if one shows up — ignore if it's not there.
     await page.locator("button:has-text('Accept')").click({ timeout: 3000 }).catch(() => {});
 
+    // Click through to the login form — it's normally hidden behind a "Log In"
+    // link/button rather than shown up front. ESPN's login sometimes opens in a
+    // popup window rather than the same page, so watch for both.
+    const popupPromise = context.waitForEvent("page", { timeout: 8000 }).catch(() => null);
+    await page.locator(SELECTORS.loginTrigger).first().click({ timeout: 5000 }).catch(() => {});
+    const popup = await popupPromise;
+    if (popup) {
+      await popup.waitForLoadState("networkidle").catch(() => {});
+      page = popup; // switch to the popup for the login form
+    }
+
     // If we're bounced to a login screen, log in.
-    const needsLogin = await page.locator(SELECTORS.emailInput).first().isVisible({ timeout: 5000 }).catch(() => false);
+    const needsLogin = await page.locator(SELECTORS.emailInput).first().isVisible({ timeout: 8000 }).catch(() => false);
     if (needsLogin) {
       await page.locator(SELECTORS.emailInput).first().fill(FOOTYTIPS_EMAIL);
       await page.locator(SELECTORS.continueButton).click({ timeout: 3000 }).catch(() => {});
       await page.locator(SELECTORS.passwordInput).first().fill(FOOTYTIPS_PASSWORD);
       await page.locator(SELECTORS.submitButton).first().click();
-      await page.waitForURL(LADDER_URL, { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(3000); // give the popup time to finish and close itself
+      // Whether login happened in a popup or the same tab, end up back on the
+      // original tab, on the actual ladder page.
+      page = context.pages()[0];
       await page.goto(LADDER_URL, { waitUntil: "networkidle" });
     }
 
@@ -110,7 +125,8 @@ async function main() {
     if (insertErr) throw insertErr;
     console.log(`Inserted ${dbRows.length} footytips_standings rows.`);
   } catch (err) {
-    await page.screenshot({ path: "footytips-debug.png", fullPage: true }).catch(() => {});
+    const mainPage = context.pages()[0] || page;
+    await mainPage.screenshot({ path: "footytips-debug.png", fullPage: true }).catch(() => {});
     throw err;
   } finally {
     await browser.close();
