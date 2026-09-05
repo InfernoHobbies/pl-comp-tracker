@@ -94,15 +94,20 @@ async function main() {
       return m ? parseFloat(m[0]) : NaN;
     };
 
-    // Row shape: [rank, name, ...variable number of per-fixture cells..., "week (x)", "total (y)"]
+    // Row shape: [combined "rank + name" cell, ...variable number of per-fixture cells..., "week (x)", "total (y)"]
+    // The rank number and person's name sit as two separate lines inside the
+    // very first cell (not two separate cells).
     const parsed = rawRows
-      .filter((cells) => cells.length >= 4)
-      .map((cells) => ({
-        rank: parseInt(cells[0], 10),
-        name: cells[1]?.split("\n")[0].trim(),
-        weeklyPoints: firstNumber(cells[cells.length - 2]),
-        points: firstNumber(cells[cells.length - 1]),
-      }))
+      .filter((cells) => cells.length >= 3)
+      .map((cells) => {
+        const nameCellLines = cells[0].split("\n").map((s) => s.trim()).filter(Boolean);
+        return {
+          rank: parseInt(nameCellLines[0], 10),
+          name: nameCellLines[nameCellLines.length - 1],
+          weeklyPoints: firstNumber(cells[cells.length - 2]),
+          points: firstNumber(cells[cells.length - 1]),
+        };
+      })
       .filter((r) => !Number.isNaN(r.rank) && r.name && !Number.isNaN(r.points));
 
     console.log(`Parsed ${parsed.length} ladder rows.`);
