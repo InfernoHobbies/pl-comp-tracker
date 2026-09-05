@@ -183,7 +183,7 @@
       </div>
     `).join("");
 
-    function compTable(title, rankMap, valueLabel, valueKey) {
+    function compTable(title, rankMap, valueLabel, valueKey, weeklyKey) {
       const rows = people
         .map((p) => ({ name: p.name, entry: rankMap[p.id] }))
         .filter((r) => r.entry)
@@ -196,7 +196,7 @@
         <div class="comp-card">
           <h2>${title}</h2>
           <table>
-            ${rows.map(r => `<tr><td class="name">${r.entry.compRank}. ${r.name}</td><td class="val">${r.entry[valueKey]}</td></tr>`).join("")}
+            ${rows.map(r => `<tr><td class="name">${r.entry.compRank}. ${r.name}${weeklyKey && r.entry[weeklyKey] != null ? ` <span class="week-pts">(this week: ${r.entry[weeklyKey]})</span>` : ""}</td><td class="val">${r.entry[valueKey]}</td></tr>`).join("")}
           </table>
           <p class="updated">Updated ${new Date(latestUpdate).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</p>
         </div>
@@ -206,13 +206,14 @@
     app.innerHTML = `
       <div class="scoreboard">${scoreboardHtml}</div>
       <div class="comp-grid">
-        ${compTable("Weekly Tipping", ftRank, "pts", "points")}
+        ${compTable("Weekly Tipping", ftRank, "pts", "points", "weekly_points")}
         ${compTable("FPL Classic", fcRank, "pts", "total_points")}
         ${compTable("FPL Head-to-Head", fhRank, "pts", "league_points")}
         ${compTable("Season Predictor", spRank, "pts", "total_points")}
       </div>
     `;
   }
+
 
   load().catch((err) => {
     console.error(err);

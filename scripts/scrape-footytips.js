@@ -48,21 +48,40 @@ async function main() {
       throw new Error("Session appears to be logged out or expired — re-run scripts/capture-footytips-session.js locally and update the FOOTYTIPS_STORAGE_STATE secret with the new file contents.");
     }
 
-    await page.waitForSelector(LADDER_ROW_SELECTOR, { timeout: 15000 });
+    await page.waitForSelector("table", { timeout: 15000 });
 
-    const rows = await page.$$eval(LADDER_ROW_SELECTOR, (trs) =>
-      trs
-        .map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim()))
-        .filter((cells) => cells.length >= 3)
-    );
+    // The page has more than one <table> (there's also an unrelated generic
+    // EPL standings widget) — find the one that's actually the tipping
+    // ladder by looking for its "TIPPER" column header.
+    const rawRows = await page.evaluate(() => {
+      const tables = Array.from(document.querySelectorAll("table"));
+      const target = tables.find((t) => t.innerText.includes("TIPPER"));
+      if (!target) return null;
+      return Array.from(target.querySelectorAll("tr")).map((tr) =>
+        Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim())
+      );
+    });
 
-    // Expect something like [rank, name, ..., points]. Adjust indices if the
-    // real column order differs once you've inspected a live screenshot.
-    const parsed = rows.map((cells) => ({
-      rank: parseInt(cells[0], 10),
-      name: cells[1],
-      points: parseFloat(cells[cells.length - 1]),
-    })).filter((r) => !Number.isNaN(r.rank) && !Number.isNaN(r.points));
+    if (!rawRows) {
+      await page.screenshot({ path: "footytips-debug.png", fullPage: true });
+      throw new Error("Couldn't find a table with a 'TIPPER' column — see footytips-debug.png, page structure may have changed.");
+    }
+
+    const firstNumber = (str) => {
+      const m = str?.match(/-?\d+(?:\.\d+)?/);
+      return m ? parseFloat(m[0]) : NaN;
+    };
+
+    // Row shape: [rank, name, ...variable number of per-fixture cells..., "week (x)", "total (y)"]
+    const parsed = rawRows
+      .filter((cells) => cells.length >= 4)
+      .map((cells) => ({
+        rank: parseInt(cells[0], 10),
+        name: cells[1]?.split("\n")[0].trim(),
+        weeklyPoints: firstNumber(cells[cells.length - 2]),
+        points: firstNumber(cells[cells.length - 1]),
+      }))
+      .filter((r) => !Number.isNaN(r.rank) && r.name && !Number.isNaN(r.points));
 
     console.log(`Parsed ${parsed.length} ladder rows.`);
     if (parsed.length === 0) {
@@ -84,6 +103,7 @@ async function main() {
       dbRows.push({
         person_id: person.id,
         points: entry.points,
+        weekly_points: Number.isNaN(entry.weeklyPoints) ? null : entry.weeklyPoints,
         rank: entry.rank,
       });
     }
