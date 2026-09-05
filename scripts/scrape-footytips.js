@@ -16,9 +16,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const FOOTYTIPS_EMAIL = process.env.FOOTYTIPS_EMAIL;
-const FOOTYTIPS_PASSWORD = process.env.FOOTYTIPS_PASSWORD;
-const LADDER_URL = process.env.FOOTYTIPS_LADDER_URL;
+const FOOTYTIPS_EMAIL = process.env.FOOTYTIPS_EMAIL?.trim();
+const FOOTYTIPS_PASSWORD = process.env.FOOTYTIPS_PASSWORD?.trim();
+const LADDER_URL = process.env.FOOTYTIPS_LADDER_URL?.trim();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !FOOTYTIPS_EMAIL || !FOOTYTIPS_PASSWORD || !LADDER_URL) {
   console.error("Missing one of: SUPABASE_URL, SUPABASE_SERVICE_KEY, FOOTYTIPS_EMAIL, FOOTYTIPS_PASSWORD, FOOTYTIPS_LADDER_URL env vars.");
