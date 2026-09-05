@@ -79,7 +79,7 @@ async function main() {
       const target = tables.find((t) => t.innerText.includes("TIPPER"));
       if (!target) return null;
       return Array.from(target.querySelectorAll("tr")).map((tr) =>
-        Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim())
+        Array.from(tr.querySelectorAll("td, th")).map((cell) => cell.innerText.trim())
       );
     });
 
