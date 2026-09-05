@@ -15,9 +15,8 @@ jobs:
       FPL_CLASSIC_LEAGUE_ID: ${{ secrets.FPL_CLASSIC_LEAGUE_ID }}
       FPL_H2H_LEAGUE_ID: ${{ secrets.FPL_H2H_LEAGUE_ID }}
       FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
-      FOOTYTIPS_EMAIL: ${{ secrets.FOOTYTIPS_EMAIL }}
-      FOOTYTIPS_PASSWORD: ${{ secrets.FOOTYTIPS_PASSWORD }}
       FOOTYTIPS_LADDER_URL: ${{ secrets.FOOTYTIPS_LADDER_URL }}
+      FOOTYTIPS_STORAGE_STATE: ${{ secrets.FOOTYTIPS_STORAGE_STATE }}
     steps:
       - uses: actions/checkout@v4
 

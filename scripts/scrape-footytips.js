@@ -1,86 +1,57 @@
-// Logs into footytips (ESPN account) with a headless browser and scrapes your
-// private ladder, since there's no public API for it.
+// Scrapes your footytips ladder using a SAVED LOGIN SESSION rather than
+// automating the login itself — ESPN's login has bot-detection that silently
+// blocks headless/automated logins, so instead this loads a session captured
+// once by scripts/capture-footytips-session.js (run locally, by hand) and
+// stored in the FOOTYTIPS_STORAGE_STATE secret.
 //
-// IMPORTANT — read this before relying on it:
-// footytips is a JS app sitting behind an ESPN account login, and ESPN's login
-// screen occasionally shows extra steps (a "continue" button, a cookie banner,
-// sometimes a bot check). The selectors below are a best-effort based on how
-// ESPN/footytips pages are normally structured. The FIRST time this runs, check
-// the workflow run's uploaded screenshot artifacts — if it didn't work, you'll
-// need to open the ladder page yourself, inspect the actual element names, and
-// adjust the SELECTORS block below to match. This is the one part of the whole
-// system that's genuinely fragile — everything else (FPL, the live table) is a
-// stable public API.
+// If this starts failing again months from now, it likely just means the
+// session expired — re-run capture-footytips-session.js locally and update
+// the secret with the new contents.
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const FOOTYTIPS_EMAIL = process.env.FOOTYTIPS_EMAIL?.trim();
-const FOOTYTIPS_PASSWORD = process.env.FOOTYTIPS_PASSWORD?.trim();
 const LADDER_URL = process.env.FOOTYTIPS_LADDER_URL?.trim();
+const STORAGE_STATE_JSON = process.env.FOOTYTIPS_STORAGE_STATE;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !FOOTYTIPS_EMAIL || !FOOTYTIPS_PASSWORD || !LADDER_URL) {
-  console.error("Missing one of: SUPABASE_URL, SUPABASE_SERVICE_KEY, FOOTYTIPS_EMAIL, FOOTYTIPS_PASSWORD, FOOTYTIPS_LADDER_URL env vars.");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !LADDER_URL || !STORAGE_STATE_JSON) {
+  console.error("Missing one of: SUPABASE_URL, SUPABASE_SERVICE_KEY, FOOTYTIPS_LADDER_URL, FOOTYTIPS_STORAGE_STATE env vars.");
   process.exit(1);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// --- Adjust these if the real page doesn't match on first run ---
-const SELECTORS = {
-  loginTrigger: "text=Log In, text=Login, a:has-text('Log In'), button:has-text('Log In')",
-  emailInput: "input[type='email'], input[name='email']",
-  continueButton: "button:has-text('Continue')",
-  passwordInput: "input[type='password'], input[name='password']",
-  submitButton: "button[type='submit'], button:has-text('Log In')",
-  ladderRow: "[class*='ladder'] tbody tr, table tr", // widened fallback
-};
+// --- Adjust this if the real ladder table's structure doesn't match ---
+const LADDER_ROW_SELECTOR = "[class*='ladder'] tbody tr, table tr"; // widened fallback
 
 async function main() {
   const browser = await chromium.launch();
-  const context = await browser.newContext();
-  let page = await context.newPage();
+
+  let storageState;
+  try {
+    storageState = JSON.parse(STORAGE_STATE_JSON);
+  } catch {
+    throw new Error("FOOTYTIPS_STORAGE_STATE isn't valid JSON — make sure the ENTIRE contents of footytips-storage-state.json were pasted into the secret, with nothing added or trimmed.");
+  }
+
+  const context = await browser.newContext({ storageState });
+  const page = await context.newPage();
 
   try {
     await page.goto(LADDER_URL, { waitUntil: "networkidle" });
 
-    // Dismiss a cookie banner if one shows up — ignore if it's not there.
-    await page.locator("button:has-text('Accept')").click({ timeout: 3000 }).catch(() => {});
-
-    // Click through to the login form — it's normally hidden behind a "Log In"
-    // link/button rather than shown up front. ESPN's login sometimes opens in a
-    // popup window rather than the same page, so watch for both.
-    const popupPromise = context.waitForEvent("page", { timeout: 8000 }).catch(() => null);
-    await page.locator(SELECTORS.loginTrigger).first().click({ timeout: 5000 }).catch(() => {});
-    const popup = await popupPromise;
-    if (popup) {
-      await popup.waitForLoadState("networkidle").catch(() => {});
-      page = popup; // switch to the popup for the login form
+    const notAMember = await page.locator("text=You are not a member of this competition").isVisible({ timeout: 3000 }).catch(() => false);
+    if (notAMember) {
+      await page.screenshot({ path: "footytips-debug.png", fullPage: true });
+      throw new Error("Session appears to be logged out or expired — re-run scripts/capture-footytips-session.js locally and update the FOOTYTIPS_STORAGE_STATE secret with the new file contents.");
     }
 
-    // If we're bounced to a login screen, log in.
-    const needsLogin = await page.locator(SELECTORS.emailInput).first().isVisible({ timeout: 8000 }).catch(() => false);
-    if (needsLogin) {
-      await page.locator(SELECTORS.emailInput).first().fill(FOOTYTIPS_EMAIL);
-      await page.locator(SELECTORS.continueButton).click({ timeout: 3000 }).catch(() => {});
-      await page.locator(SELECTORS.passwordInput).first().fill(FOOTYTIPS_PASSWORD);
-      await page.locator(SELECTORS.submitButton).first().click();
-      await page.waitForTimeout(3000); // give the popup time to finish and close itself
-      // Whether login happened in a popup or the same tab, end up back on the
-      // original tab, on the actual ladder page.
-      page = context.pages()[0];
-      await page.goto(LADDER_URL, { waitUntil: "networkidle" });
-    }
+    await page.waitForSelector(LADDER_ROW_SELECTOR, { timeout: 15000 });
 
-    await page.waitForSelector(SELECTORS.ladderRow, { timeout: 15000 });
-
-    const rows = await page.$$eval(SELECTORS.ladderRow, (trs) =>
+    const rows = await page.$$eval(LADDER_ROW_SELECTOR, (trs) =>
       trs
-        .map((tr) => {
-          const cells = Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim());
-          return cells;
-        })
+        .map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.innerText.trim()))
         .filter((cells) => cells.length >= 3)
     );
 
@@ -125,8 +96,7 @@ async function main() {
     if (insertErr) throw insertErr;
     console.log(`Inserted ${dbRows.length} footytips_standings rows.`);
   } catch (err) {
-    const mainPage = context.pages()[0] || page;
-    await mainPage.screenshot({ path: "footytips-debug.png", fullPage: true }).catch(() => {});
+    await page.screenshot({ path: "footytips-debug.png", fullPage: true }).catch(() => {});
     throw err;
   } finally {
     await browser.close();
