@@ -127,10 +127,17 @@ async function main() {
       .select("id, name, footytips_name");
     if (peopleErr) throw peopleErr;
 
+    // Compare names forgivingly: ignore case, non-breaking spaces and
+    // repeated/trailing whitespace.
+    const norm = (s) => (s || "").replace(/ /g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+
+    console.log("Names read from ladder:", JSON.stringify(parsed.map((r) => r.name)));
+    console.log("Names expected from people table:", JSON.stringify(people.map((p) => p.footytips_name || p.name)));
+
     const dbRows = [];
     for (const entry of parsed) {
       const person = people.find(
-        (p) => (p.footytips_name || p.name).toLowerCase() === entry.name.toLowerCase()
+        (p) => norm(p.footytips_name || p.name) === norm(entry.name)
       );
       if (!person) continue; // ladder includes people outside your group of 5 — expected, not an error
       dbRows.push({
